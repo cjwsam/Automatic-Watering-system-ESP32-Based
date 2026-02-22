@@ -158,7 +158,7 @@ void handleData(AsyncWebServerRequest *request) {
 void handleToggleRelay(AsyncWebServerRequest *request, String body) {
     addLog("Received toggle relay request at /toggleRelay");
     addLog("Request body: " + body);
-    
+
     if (body.length() == 0) {
         addLog("Toggle relay: Empty body received");
         request->send(400, "application/json", "{\"error\":\"Empty body received\"}");
@@ -173,30 +173,53 @@ void handleToggleRelay(AsyncWebServerRequest *request, String body) {
         return;
     }
 
-    if (!doc.containsKey("relayZ3")) {
-        addLog("Toggle relay: Missing relayZ3 field");
-        request->send(400, "application/json", "{\"error\":\"Missing relayZ3 field\"}");
-        return;
+    // Handle Zone 3 relay toggle
+    if (doc.containsKey("relayZ3")) {
+        String relayCommand = doc["relayZ3"];
+        addLog("Relay Z3 command: " + relayCommand);
+        if (relayCommand == "ON" && !relayZone3State) {
+            digitalWrite(relayZone3, HIGH);
+            relayZone3State = true;
+            relayZone3LastChange = millis();
+            addLog("Z3 ON via HTTP");
+        } else if (relayCommand == "OFF" && relayZone3State) {
+            digitalWrite(relayZone3, LOW);
+            relayZone3State = false;
+            relayZone3LastChange = millis();
+            addLog("Z3 OFF via HTTP");
+        } else {
+            addLog("Toggle relay Z3: No state change needed");
+        }
     }
 
-    String relayCommand = doc["relayZ3"];
-    addLog("Relay command: " + relayCommand);
-    if (relayCommand == "ON" && !relayZone3State) {
-        digitalWrite(relayZone3, HIGH);
-        relayZone3State = true;
-        relayZone3LastChange = millis();
-        addLog("Z3 ON via HTTP");
-    } else if (relayCommand == "OFF" && relayZone3State) {
-        digitalWrite(relayZone3, LOW);
-        relayZone3State = false;
-        relayZone3LastChange = millis();
-        addLog("Z3 OFF via HTTP");
-    } else {
-        addLog("Toggle relay: No state change needed");
+    // Handle Zone 4 relay toggle
+    if (doc.containsKey("relayZ4")) {
+        String relayCommand = doc["relayZ4"];
+        addLog("Relay Z4 command: " + relayCommand);
+        if (relayCommand == "ON" && !relayZone4State) {
+            digitalWrite(relayZone4, HIGH);
+            relayZone4State = true;
+            relayZone4LastChange = millis();
+            addLog("Z4 ON via HTTP");
+        } else if (relayCommand == "OFF" && relayZone4State) {
+            digitalWrite(relayZone4, LOW);
+            relayZone4State = false;
+            relayZone4LastChange = millis();
+            addLog("Z4 OFF via HTTP");
+        } else {
+            addLog("Toggle relay Z4: No state change needed");
+        }
+    }
+
+    if (!doc.containsKey("relayZ3") && !doc.containsKey("relayZ4")) {
+        addLog("Toggle relay: Missing relayZ3 or relayZ4 field");
+        request->send(400, "application/json", "{\"error\":\"Missing relayZ3 or relayZ4 field\"}");
+        return;
     }
 
     StaticJsonDocument<200> response;
     response["relayZ3"] = relayZone3State ? "ON" : "OFF";
+    response["relayZ4"] = relayZone4State ? "ON" : "OFF";
     String json;
     serializeJson(response, json);
     addLog("Sending toggle response: " + json);
@@ -356,6 +379,16 @@ void handleGetSchedules(AsyncWebServerRequest *request) {
     serializeJson(doc, json);
     request->send(200, "application/json", json);
 }
+
+// TODO: Implement schedule execution logic. Currently, schedules are stored in
+// memory but no background task checks the current time (via NTP or RTC) against
+// the schedule entries to automatically activate/deactivate relays. A dedicated
+// FreeRTOS task should be created that:
+//   1. Syncs time via NTP (e.g., configTime()) on startup
+//   2. Periodically compares current time against each schedule entry
+//   3. Turns the appropriate relay ON when a schedule's start time is reached
+//   4. Turns the relay OFF after the schedule's duration has elapsed
+//   5. Persists schedules to SPIFFS/EEPROM so they survive reboots
 
 void handleAddSchedule(AsyncWebServerRequest *request) {
     String body = request->arg("plain");

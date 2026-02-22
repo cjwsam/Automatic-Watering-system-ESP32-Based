@@ -79,6 +79,53 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       }
     }
   }
+
+  if (strcmp(topic, "control/relay/zone4") == 0) {
+    const char* relayZ4 = doc["relayZ4"];
+    if (relayZ4) {
+      String command = String(relayZ4);
+      command.toUpperCase(); // Normalize to uppercase
+      bool currentState = digitalRead(relayZone4); // Assuming HIGH = ON
+      Serial.printf("Z4 Command: %s, Current State: %s\n", command.c_str(), currentState ? "ON" : "OFF");
+
+      if (command == "ON") {
+        if (!currentState) {
+          digitalWrite(relayZone4, HIGH);
+          relayZone4State = true;
+          Serial.println("Z4 ON via MQTT");
+        } else {
+          Serial.println("Z4 already ON, ignoring ON command");
+        }
+      } else if (command == "OFF") {
+        if (currentState) {
+          digitalWrite(relayZone4, LOW);
+          relayZone4State = false;
+          Serial.println("Z4 OFF via MQTT");
+        } else {
+          Serial.println("Z4 already OFF, ignoring OFF command");
+        }
+      } else {
+        Serial.printf("Invalid Z4 command: %s\n", command.c_str());
+      }
+    }
+  }
+
+  // Handle incoming soil moisture data from remote sensors
+  if (strcmp(topic, "sensors/soil/zone3") == 0) {
+    if (doc.containsKey("soilHumidity")) {
+      soilHumidityZone3 = doc["soilHumidity"];
+      soilDataReceived = true;
+      Serial.printf("Soil Z3 humidity: %.1f%%\n", soilHumidityZone3);
+    }
+  }
+
+  if (strcmp(topic, "sensors/soil/zone4") == 0) {
+    if (doc.containsKey("soilHumidity")) {
+      soilHumidityZone4 = doc["soilHumidity"];
+      soilDataReceived = true;
+      Serial.printf("Soil Z4 humidity: %.1f%%\n", soilHumidityZone4);
+    }
+  }
 }
 
 void networkTask(void *pvParameters) {
@@ -102,6 +149,7 @@ void networkTask(void *pvParameters) {
                 mqttClient.subscribe("sensors/soil/zone3");
                 mqttClient.subscribe("sensors/soil/zone4");
                 mqttClient.subscribe("control/relay/zone3");
+                mqttClient.subscribe("control/relay/zone4");
                 mqttConnected = true;
                 addLog("MQTT connected and subscribed to topics");
             } else {
